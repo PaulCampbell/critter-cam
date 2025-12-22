@@ -10,14 +10,14 @@ It uses https://github.com/PaulCampbell/iot_manager as the backend
 
 That thing is configured something like this:
 
-```
+```javascript
 import createIotManager from 'iot_manager'
 import {Authenticate, CreateContent } from 'iot_manager/events'
 import iotManagerBasicHttpAuth from 'iot_manager/authentication/iot-manager-basic-http'
 
 // Create data store and authentication
 const iotAuthentication = iotManagerBasicHttpAuth({ 
-  secret: process.env.AUTH_SECRET || 'your-secret-key' 
+  secret: process.env.AUTH_SECRET
 })
 
 // Create IoT manager and register event handlers
@@ -40,7 +40,7 @@ iotManager.setEndpointListener({ pathRoot: '/iot-manager' })
       };
   })
   .on(CreateContent, async (ctx, data) => {
-    // Nice - picture recieved
+    // Nice - picture received
     const picUrl = await savePicture(data._formData)
     await postToFediverse({
         imageUrl: picUrl
