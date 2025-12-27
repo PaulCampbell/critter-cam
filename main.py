@@ -1,48 +1,31 @@
 import time
 import ntptime
 import machine
-import network
 import camera
 
 from environment import (
-    WIFI_SSID,
-    WIFI_PASSWORD,
     IOT_MANAGER_BASE_URL,
     DEVICE_ID,
     DEVICE_PASSWORD,
 )
 
 from lib.iot_manager_client import IotManagerClient
+from lib.wifimgr import WifiManager
 
 def connect_wifi():
-    if network is None:
-        print("network module not available")
-        return
+    wlan = WifiManager().get_connection()
+    if wlan is None:
+        print("Could not initialize the network connection.")
+        while True:
+            pass
+    print("Network connected:", wlan.ifconfig())
+    try:
+        ntptime.settime()
+        print("System time synchronized:", time.time())
+    except Exception as e:
+        print("Failed to synchronize time:", e)
+    
 
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    if wlan.isconnected():
-        print("Already connected:", wlan.ifconfig())
-        try:
-            ntptime.settime()
-        except Exception as e:
-            print("ntptime.settime failed:", e)
-        return
-
-    print("Connecting to WiFi...")
-    wlan.connect(WIFI_SSID, WIFI_PASSWORD)
-
-    for _ in range(30):
-        if wlan.isconnected():
-            print("Connected:", wlan.ifconfig())
-            try:
-                ntptime.settime()
-            except Exception as e:
-                print("ntptime.settime failed:", e)
-            return
-        time.sleep(0.5)
-
-    raise RuntimeError("WiFi connection failed")
 
 def take_photo(client, test_post=False):
     try:
