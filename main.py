@@ -106,4 +106,10 @@ def main():
     print("Entering deep sleep for:", ms_til_next_wakeup)
     machine.deepsleep(ms_til_next_wakeup)
 
-main()
+try:
+    main()
+except Exception as e:
+    print("Unhandled exception in main:", e)
+    # probably a WiFi issue; sleep for 5 minutes and try again
+    print("Entering deep sleep for 5 minutes")
+    machine.deepsleep(5 * 60 * 1000)
