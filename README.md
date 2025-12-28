@@ -6,6 +6,14 @@ It powers the Lochearnhead-Sunrise Fediverse Bot: https://agoodmooring.com/a/loc
 
 If you know what the fediverse is, you should follow that thing :)
 
+## Features
+
+- Wifi configuration via Access Point (local hotspot)
+- OTA updates
+- Take a picture, upload a picture, deepsleep until next picture
+
+## On the server...
+
 It uses https://github.com/PaulCampbell/iot_manager as the backend
 
 IOT Manager is configured something like this:
@@ -15,7 +23,6 @@ import createIotManager from 'iot_manager'
 import {Authenticate, CreateContent } from 'iot_manager/events'
 import iotManagerBasicHttpAuth from 'iot_manager/authentication/iot-manager-basic-http'
 
-// Create data store and authentication
 const iotAuthentication = iotManagerBasicHttpAuth({ 
   secret: process.env.AUTH_SECRET
 })
