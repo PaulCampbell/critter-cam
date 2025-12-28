@@ -6,7 +6,7 @@ It powers the Lochearnhead-Sunrise Fediverse Bot: https://agoodmooring.com/a/loc
 
 If you know what the fediverse is, you should follow that thing :)
 
-It uses https://github.com/PaulCampbell/iot_manager as the backend
+It uses https://github.com/PaulCampbell/iot_manager (sorry - need to publish this repository... coming soon) as the backend
 
 IOT Manager is configured something like this:
 
@@ -100,8 +100,6 @@ esptool.py --chip esp32 --port /dev/tty.usbserial-10 write_flash -z 0x1000  clie
 Copy environment.example.py to environment.py and set the environment variables
 
 ```
-WIFI_SSID = "your_ssid"
-WIFI_PASSWORD = "your_password"
 IOT_MANAGER_BASE_URL = "server_api_endpoint"
 DEVICE_ID = "your_device_id"
 DEVICE_PASSWORD = "your_password"
@@ -119,9 +117,13 @@ Debugging: Connect to the device to check the logs / run code etc
 mpremote connect "/dev/tty.usbserial-10" repl
 ```
 
+## Wifi config
+
+When the device starts up, if it cannot connect to the internet it will start a wifi hotspot. Connect to the hotspot with your phone, and after a few seconds one of those captive wifi pages will pop open.  Select your local wifi network, and give the device the network password, and from now on the device will use your wifi network. Woop.
+
 ## OTA updates
 
-IOT Manager on the server uses the github api to call this to ge tthe latest release. It hands the link back to the device, which pulls the latest release, unzips it and installs it. New releases in the repository will end up on the device soon.
+IOT Manager on the server uses the github api to call this repository to get the latest release. It hands the link back to the device, which pulls the latest release, unzips it and installs it. New releases in the repository will end up on the device soon.
 
 ## Enclosure
 
