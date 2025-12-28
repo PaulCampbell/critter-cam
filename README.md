@@ -6,7 +6,7 @@ It powers the Lochearnhead-Sunrise Fediverse Bot: https://agoodmooring.com/a/loc
 
 If you know what the fediverse is, you should follow that thing :)
 
-It uses https://github.com/PaulCampbell/iot_manager (sorry - need to publish this repository... coming soon) as the backend
+It uses https://github.com/PaulCampbell/iot_manager as the backend
 
 IOT Manager is configured something like this:
 
