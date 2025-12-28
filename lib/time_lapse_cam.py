@@ -2,16 +2,16 @@ from lib.iot_manager_client import IotManagerClient
 from lib.wifimgr import WifiManager
 import time
 import ntptime
-import machine
 import camera
+import machine
 
-class SuperCoolEsp:
+class TimeLapseCam:
     def __init__(self, iot_manager_base_url, device_id, device_password):
         self.iot_manager_base_url = iot_manager_base_url
         self.device_id = device_id
         self.device_password = device_password
         self.client = IotManagerClient(base_url=self.iot_manager_base_url)
-        print("SuperCoolEsp initialized with device ID:", self.device_id)
+        print("TimeLapseCam initialized with device ID:", self.device_id)
 
     def connect_wifi(self):
         print("Connecting to WiFi...")
@@ -64,6 +64,8 @@ class SuperCoolEsp:
         return ms_til_next_wakeup
 
     def main(self):
+        print("Starting TimeLapseCam main function")
+
         wakeup_time = time.time()
         reason = machine.wake_reason()
         print("Wakeup time:", wakeup_time)
@@ -84,14 +86,20 @@ class SuperCoolEsp:
         except Exception as e:
             print("Service discovery failed:", e)
             return
-
+        
         if reason == machine.DEEPSLEEP_RESET:
             self.take_photo()
         else:
             self.take_photo(test_post=True)
+
+        # check for firmware updates before going to sleep 
+        # until next sunrise
+        try:
+            print("Checking for firmware updates...")
+            self.client.check_and_update_firmware()
+        except Exception as e:
+            print("Firmware update check failed:", e)
         
         ms_til_next_wakeup = self.fetch_wakeup_time()
         print("Entering deep sleep for: ", ms_til_next_wakeup)
-        deepsleep_override = 60000 * 2
-        print('deepsleep override to', deepsleep_override)
-        machine.deepsleep(deepsleep_override)
+        machine.deepsleep(ms_til_next_wakeup)

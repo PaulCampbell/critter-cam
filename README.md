@@ -39,6 +39,22 @@ iotManager.setEndpointListener({ pathRoot: '/iot-manager' })
           authorization: authHeader,
       };
   })
+  .on(GetLatestVersion, async (ctx) => {
+    debug('GetLatestVersion event received:', ctx);
+    const response = await octokit.request('GET /repos/{owner}/{repo}/releases/latest', {
+      owner: process.env.SUNRISE_BOT_REPO_OWNER,
+      repo: process.env.SUNRISE_BOT_REPO_NAME,
+      headers: {
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    })
+    const latestRelease = response.data;
+    const { tag_name, tarball_url } = latestRelease;
+    return {
+      version: tag_name,
+      url: tarball_url,
+    };
+  })
   .on(CreateContent, async (ctx, data) => {
     // Nice - picture received
     const picUrl = await savePicture(data._formData)
@@ -95,6 +111,10 @@ Debugging: Connect to the device to check the logs / run code etc
 mpremote connect "/dev/tty.usbserial-10" repl
 ```
 
+## OTA updates
+
+IOT Manager on the server uses the github api to call this to ge tthe latest release. It hands the link back to the device, which pulls the latest release, unzips it and installs it. New releases in the repository will end up on the device soon.
+
 ## Enclosure
 
-I never had anything sensible lying around to put the thing in, so I made a little [enclosure]|(/3d-models) with OpenScad and printed it. It's pretty basic, but hopefully it will do the job!.
+I never had anything sensible lying around to put the thing in, so I made a little [enclosure](/3d-models) with OpenScad and printed it. It's pretty basic, but hopefully it will do the job!.

@@ -62,6 +62,5 @@ mpremote connect "$PORT" fs cp "$ENV_FILE" :/environment.py
 
 
 echo "Done. Next:" 
-echo "  1) Edit WiFi + base_url in main.py, redeploy" 
-echo "  2) Open REPL: mpremote connect \"$PORT\" repl" 
-echo "  3) Soft reset run: mpremote connect \"$PORT\" reset" 
+echo "  1) Open REPL: mpremote connect \"$PORT\" repl" 
+echo "  2) Soft reset run: mpremote connect \"$PORT\" reset" 

@@ -7,7 +7,9 @@ import urequests as requests
 import ujson as json
 import ubinascii as binascii
 import deflate
-import tarfile
+import lib.utarfile as tarfile
+import time
+import machine
 
 
 class IotManagerError(Exception):
@@ -278,6 +280,10 @@ class IotManagerClient:
         if http_method == 'POST':
             return self._request_raw('POST', url, json_body=data, multipart_data=multipart_data)
         raise IotManagerError('Unsupported HTTP method: %s' % http_method)
+    
+    def check_and_update_firmware(self):
+        ota_updater = OTAUpdater(self)
+        return ota_updater.check_and_perform_update()
 
 
     def get_config(self, **params):
@@ -379,31 +385,52 @@ class OTAUpdater:
     def __init__(self, client: IotManagerClient):
         self.client = client
 
-    def recursive_delete(self, path: str):
-        """
-        Delete a directory recursively, removing files from all sub-directories before
-        finally removing empty directory. Works for both files and directories.
+    def _normalize_tar_path(self, tar_name: str):
+        if not tar_name:
+            return None
 
-        No limit to the depth of recursion, will fail on too deep dir structures.
-        """
-        # prevent deleting the whole filesystem and skip non-existent files
-        if not path or not uos.stat(path):
+        name = tar_name.replace('\\', '/')
+        while name.startswith('./'):
+            name = name[2:]
+        while name.startswith('/'):
+            name = name[1:]
+
+        if name == '' or name == '.' or name.startswith('../') or '/..' in name:
+            return None
+
+        # Keep already-rooted firmware paths
+        if name == 'main.py' or name.startswith('lib/'):
+            return name
+
+        # If packaged with a top-level directory, strip exactly one component
+        if '/' in name:
+            _, remainder = name.split('/', 1)
+            if remainder == 'main.py' or remainder.startswith('lib/'):
+                return remainder
+
+        return None
+
+    def _ensure_parent_dirs(self, rel_path: str):
+        if not rel_path or '/' not in rel_path:
             return
-
-        path = path[:-1] if path.endswith('/') else path
-
-        try:
-            children = uos.listdir(path)
-            # no exception thrown, this is a directory
-            for child in children:
-                self.recursive_delete(path + '/' + child)
-        except OSError:
-            uos.remove(path)
-            return
-        uos.rmdir(path)
+        parts = rel_path.split('/')[:-1]
+        acc = ''
+        for part in parts:
+            if not part:
+                continue
+            acc = part if not acc else acc + '/' + part
+            try:
+                uos.mkdir(acc)
+            except OSError as e:
+                if getattr(e, 'errno', None) == 17:
+                    pass
+                else:
+                    try:
+                        uos.stat(acc)
+                    except Exception:
+                        raise
 
     def get_current_version(self):
-        # read from version.dat 
         try:
             with open('version.dat', 'r') as f:
                 version = f.read().strip()
@@ -413,28 +440,33 @@ class OTAUpdater:
 
     def check_for_update(self):
         data = self.client.get_latest_version()
-        latest_version = data.get('latestVersion')
-        download_url = data.get('downloadUrl')
+        latest_version = data.get('version')
+        download_url = data.get('url')
+        print("Latest version:", latest_version, "Download URL:", download_url)
         current_version = self.get_current_version()
-        
+        print("Current version:", current_version)
         if latest_version and download_url:
-            if latest_version != current_version:
-                return latest_version, download_url
+            #if latest_version != current_version:
+            return latest_version, download_url
         return None, None
 
     def check_and_perform_update(self):
-        tmp_filename = 'ota_version.tmp'
+        tmp_filename = '/ota_version.tmp'
         gc.collect()
         latest_version, download_url = self.check_for_update()
         if latest_version and download_url:
-            print(f"Updating from version {self.current_version} to {latest_version}")
-            response = requests.get(download_url)
+            print(f"Updating to {latest_version}, downloading from {download_url} ...")
+            response = requests.get(download_url, headers={"User-Agent": "TimeLapseCam Agent"}, stream=True)
+            print("Download response status:", response.status_code)
             with open(tmp_filename, 'wb') as f:
+                print("Writing to temporary file:", tmp_filename)
                 while True:
                     chunk = response.raw.read(512)
+                    print("Downloaded chunk size:", len(chunk))
                     if not chunk:
                         break
                     f.write(chunk)
+                    print("Wrote chunk to file.")
             
             gc.collect()
             try:
@@ -446,18 +478,27 @@ class OTAUpdater:
                 f2 = deflate.DeflateIO(f1, deflate.GZIP)
                 f3 = tarfile.TarFile(fileobj=f2)
                 for _file in f3:
-                    file_name = _file.name
-                    if file_name.endswith('/'):  # is a directory
-                        try:
-                            print(f'creating directory {file_name} ... ')
-                            uos.mkdir(file_name[:-1])  # without trailing slash or fail with errno 2
-                            print('ok')
-                        except OSError as e:
-                            if e.errno == 17:
-                                print('already exists')
-                            else:
-                                raise e
+                    raw_name = getattr(_file, 'name', None)
+                    file_name = self._normalize_tar_path(raw_name)
+                    print(f'Extracting file: {raw_name} -> {file_name} ... ')
+                    if not file_name:
                         continue
+
+                    # Directory entries (some tars include them)
+                    if file_name.endswith('/'):
+                        dir_name = file_name[:-1]
+                        if dir_name:
+                            try:
+                                uos.mkdir(dir_name)
+                            except OSError as e:
+                                if getattr(e, 'errno', None) != 17:
+                                    try:
+                                        uos.stat(dir_name)
+                                    except Exception:
+                                        raise
+                        continue
+
+                    self._ensure_parent_dirs(file_name)
                     file_obj = f3.extractfile(_file)
                     with open(file_name, 'wb') as f_out:
                         written_bytes = 0
@@ -468,8 +509,14 @@ class OTAUpdater:
                             written_bytes += f_out.write(buf)
                         print(f'file {file_name} ({written_bytes} B) written to flash')
 
+            print("Deleting temporary file:", tmp_filename)
             uos.remove(tmp_filename)
-            print("Update applied successfully.")
-            return True
+
+            print("Update applied successfully. write new version file.")
+            with open('version.dat', 'w') as f:
+                f.write(latest_version)
+            print("Restarting device to apply update...")
+            time.sleep(2)
+            machine.reset()
         print("No update available.")
         return False

@@ -13,7 +13,7 @@ wlan_sta = network.WLAN(network.STA_IF)
 class WifiManager:
 
     # authmodes: 0=open, 1=WEP, 2=WPA-PSK, 3=WPA2-PSK, 4=WPA/WPA2-PSK
-    def __init__(self, ssid='SuperCoolEsp', password='', authmode=0):
+    def __init__(self, ssid='TimeLapseCam', password='', authmode=0):
         self.ssid = ssid
         self.password = password
         self.authmode = authmode
