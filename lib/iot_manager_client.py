@@ -1,16 +1,15 @@
 """
     IoT Manager MicroPython Client.
 """
-
-try:
-    import ujson as json
-except ImportError:  # CPython fallback for smoke tests
-    import json
-
-try:
-    import ubinascii as binascii
-except ImportError:
-    import binascii
+import gc
+import uos
+import urequests as requests
+import ujson as json
+import ubinascii as binascii
+import deflate
+import lib.utarfile as tarfile
+import time
+import machine
 
 
 class IotManagerError(Exception):
@@ -206,11 +205,7 @@ class IotManagerClient:
 
     def _request_raw(self, method, url, params=None, json_body=None, multipart_data=None):
         """Return parsed JSON dict/list (or raise)."""
-        try:
-            import urequests as requests
-        except ImportError:
-            import requests  # type: ignore
-
+        gc.collect()
         if params and method.upper() == 'GET':
             qs = _encode_qs(params)
             if qs:
@@ -285,6 +280,10 @@ class IotManagerClient:
         if http_method == 'POST':
             return self._request_raw('POST', url, json_body=data, multipart_data=multipart_data)
         raise IotManagerError('Unsupported HTTP method: %s' % http_method)
+    
+    def check_and_update_firmware(self):
+        ota_updater = OTAUpdater(self)
+        return ota_updater.check_and_perform_update()
 
 
     def get_config(self, **params):
@@ -379,3 +378,145 @@ class IotManagerClient:
             raise ServerError('Authenticate did not return authorization')
         self.authorization = result['authorization']
         return self.authorization
+
+
+class OTAUpdater:
+    """Over-the-air updater using IoT Manager."""
+    def __init__(self, client: IotManagerClient):
+        self.client = client
+
+    def _normalize_tar_path(self, tar_name: str):
+        if not tar_name:
+            return None
+
+        name = tar_name.replace('\\', '/')
+        while name.startswith('./'):
+            name = name[2:]
+        while name.startswith('/'):
+            name = name[1:]
+
+        if name == '' or name == '.' or name.startswith('../') or '/..' in name:
+            return None
+
+        # Keep already-rooted firmware paths
+        if name == 'main.py' or name.startswith('lib/'):
+            return name
+
+        # If packaged with a top-level directory, strip exactly one component
+        if '/' in name:
+            _, remainder = name.split('/', 1)
+            if remainder == 'main.py' or remainder.startswith('lib/'):
+                return remainder
+
+        return None
+
+    def _ensure_parent_dirs(self, rel_path: str):
+        if not rel_path or '/' not in rel_path:
+            return
+        parts = rel_path.split('/')[:-1]
+        acc = ''
+        for part in parts:
+            if not part:
+                continue
+            acc = part if not acc else acc + '/' + part
+            try:
+                uos.mkdir(acc)
+            except OSError as e:
+                if getattr(e, 'errno', None) == 17:
+                    pass
+                else:
+                    try:
+                        uos.stat(acc)
+                    except Exception:
+                        raise
+
+    def get_current_version(self):
+        try:
+            with open('version.dat', 'r') as f:
+                version = f.read().strip()
+                return version
+        except Exception:
+            return None
+
+    def check_for_update(self):
+        data = self.client.get_latest_version()
+        latest_version = data.get('version')
+        download_url = data.get('url')
+        print("Latest version:", latest_version, "Download URL:", download_url)
+        current_version = self.get_current_version()
+        print("Current version:", current_version)
+        if latest_version and download_url:
+            #if latest_version != current_version:
+            return latest_version, download_url
+        return None, None
+
+    def check_and_perform_update(self):
+        tmp_filename = '/ota_version.tmp'
+        gc.collect()
+        latest_version, download_url = self.check_for_update()
+        if latest_version and download_url:
+            print(f"Updating to {latest_version}, downloading from {download_url} ...")
+            response = requests.get(download_url, headers={"User-Agent": "TimeLapseCam Agent"}, stream=True)
+            print("Download response status:", response.status_code)
+            with open(tmp_filename, 'wb') as f:
+                print("Writing to temporary file:", tmp_filename)
+                while True:
+                    chunk = response.raw.read(512)
+                    print("Downloaded chunk size:", len(chunk))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    print("Wrote chunk to file.")
+            
+            gc.collect()
+            try:
+                uos.stat(tmp_filename)
+            except OSError:
+                print('No new firmware file found in flash.')
+                return
+            with open(tmp_filename, 'rb') as f1:
+                f2 = deflate.DeflateIO(f1, deflate.GZIP)
+                f3 = tarfile.TarFile(fileobj=f2)
+                for _file in f3:
+                    raw_name = getattr(_file, 'name', None)
+                    file_name = self._normalize_tar_path(raw_name)
+                    print(f'Extracting file: {raw_name} -> {file_name} ... ')
+                    if not file_name:
+                        continue
+
+                    # Directory entries (some tars include them)
+                    if file_name.endswith('/'):
+                        dir_name = file_name[:-1]
+                        if dir_name:
+                            try:
+                                uos.mkdir(dir_name)
+                            except OSError as e:
+                                if getattr(e, 'errno', None) != 17:
+                                    try:
+                                        uos.stat(dir_name)
+                                    except Exception:
+                                        raise
+                        continue
+
+                    self._ensure_parent_dirs(file_name)
+                    file_obj = f3.extractfile(_file)
+                    with open(file_name, 'wb') as f_out:
+                        written_bytes = 0
+                        while True:
+                            buf = file_obj.read(512)
+                            if not buf:
+                                break
+                            written_bytes += f_out.write(buf)
+                        print(f'file {file_name} ({written_bytes} B) written to flash')
+
+            print("Deleting temporary file:", tmp_filename)
+            uos.remove(tmp_filename)
+
+            print("Update applied successfully. write new version file.")
+            with open('version.dat', 'w') as f:
+                f.write(latest_version)
+            print("Restarting device to apply update...")
+            time.sleep(2)
+            machine.reset()
+        print("No update available.")
+        return False
