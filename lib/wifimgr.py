@@ -19,7 +19,7 @@ class WifiManager:
         self.authmode = authmode
         self.server_socket = None
 
-    def get_connection(self):
+    def get_connection(self, enter_captive_portal_if_needed=True):
         """return a working WLAN(STA_IF) instance or None"""
 
         # First check if there already is any connection:
@@ -60,7 +60,7 @@ class WifiManager:
             print("exception", str(e))
 
         # start web server for connection manager:
-        if not connected:
+        if not connected and enter_captive_portal_if_needed:
             connected = self.start()
 
         return wlan_sta if connected else None
@@ -73,7 +73,6 @@ class WifiManager:
 
     
     def start(self, port=80):
-
         addr = socket.getaddrinfo('0.0.0.0', port)[0][-1]
 
         self.stop()
@@ -142,6 +141,12 @@ class WifiManager:
             finally:
                 client.close()
 
+    def get_signal_strength(self):
+        if wlan_sta.isconnected():
+            return wlan_sta.status('rssi')
+        return None
+
+
 
 def read_profiles():
     with open(NETWORK_PROFILES) as f:
@@ -151,6 +156,7 @@ def read_profiles():
         ssid, password = line.strip("\n").split(";")
         profiles[ssid] = password
     return profiles
+
 
 
 def write_profiles(profiles):
