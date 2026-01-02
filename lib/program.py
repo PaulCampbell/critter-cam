@@ -11,7 +11,7 @@ TEST_MODE = False
 
 class MainProgram:
     def __init__(self, iot_manager_base_url, device_id, device_password):
-        self.pir = Pin(13, Pin.IN, Pin.PULL_UP)
+        self.pir_pin = Pin(13, Pin.IN, Pin.PULL_UP)
         self.iot_manager_base_url = iot_manager_base_url
         self.device_id = device_id
         self.device_password = device_password
@@ -77,8 +77,7 @@ class MainProgram:
         wakeup_time = time.time()
         wake_reason = machine.wake_reason()
         print("Wake reason:", wake_reason, "at time:", wakeup_time)
-        allow_captive_portal = (wake_reason != machine.DEEPSLEEP_WAKEUP_EXT0)
-        wlan = self.connect_wifi(enter_captive_portal_if_needed=allow_captive_portal)
+        wlan = self.connect_wifi(enter_captive_portal_if_needed=True)
         
         if wlan is None:
             print("Failed to connect to WiFi.")
@@ -91,13 +90,13 @@ class MainProgram:
 
         self.upload_photo(photo)
 
-        try:
-            print("Checking for firmware updates...")
-            self.client.check_and_update_firmware()
-        except Exception as e:
-            print("Firmware update check failed:", e)
+        # try:
+        #     print("Checking for firmware updates...")
+        #     self.client.check_and_update_firmware()
+        # except Exception as e:
+        #     print("Firmware update check failed:", e)
 
-        esp32.wake_on_ext0(pin = self.pir, level = machine.Pin.WAKE_LOW)
+        esp32.wake_on_ext0(pin = self.pir_pin, level = esp32.WAKEUP_ANY_HIGH)
         self.client.create_device_status({
             "last_wakeup_time": wakeup_time,
             "last_wakeup_reason": str(wake_reason),
