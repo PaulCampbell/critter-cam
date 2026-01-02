@@ -1,10 +1,8 @@
-# Timelapse esp32 Camera (locheanhead-sunrise)
+# Critter  Camera
 
-Here is the code for an esp32 timelapse camera. 
+Here is the code for an esp32 motion activated camera.
 
-It powers the Lochearnhead-Sunrise Fediverse Bot: https://agoodmooring.com/a/lochearnhead-sunrise
-
-If you know what the fediverse is, you should follow that thing :)
+When a critter runs in front of the camera, wake up, take a photo, upload the photo, go back to sleep
 
 ## Features
 
@@ -20,7 +18,7 @@ IOT Manager is configured something like this:
 
 ```javascript
 import createIotManager from 'iot_manager'
-import {Authenticate, CreateContent } from 'iot_manager/events'
+import {Authenticate, CreateContent, GetLatestVersion } from 'iot_manager/events'
 import iotManagerBasicHttpAuth from 'iot_manager/authentication/iot-manager-basic-http'
 
 const iotAuthentication = iotManagerBasicHttpAuth({ 
@@ -49,8 +47,8 @@ iotManager.setEndpointListener({ pathRoot: '/iot-manager' })
   .on(GetLatestVersion, async (ctx) => {
     debug('GetLatestVersion event received:', ctx);
     const response = await octokit.request('GET /repos/{owner}/{repo}/releases/latest', {
-      owner: process.env.SUNRISE_BOT_REPO_OWNER,
-      repo: process.env.SUNRISE_BOT_REPO_NAME,
+      owner: process.env.CRITTER_CAM_REPO_OWNER,
+      repo: process.env.CRITTER_CAM_REPO_NAME,
       headers: {
         'X-GitHub-Api-Version': '2022-11-28'
       }
@@ -62,20 +60,9 @@ iotManager.setEndpointListener({ pathRoot: '/iot-manager' })
       url: tarball_url,
     };
   })
-  .on(GetConfig, async (ctx, data) => {
-    const nextWakeupDateTime = await getTomorrowSunriseTime()
-    const nextWakeupTimeMs = nextWakeupDateTime.getTime() - new Date().getTime()
-    return {
-      nextWakeupDateTime,
-      nextWakeupTimeMs,
-    };
-  })
   .on(CreateContent, async (ctx, data) => {
     // Nice - picture received...
     const picUrl = await savePicture(data._formData)
-    await postToFediverse({
-        imageUrl: picUrl
-    })
     return { success: true }
   })
 ```
