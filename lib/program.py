@@ -77,7 +77,7 @@ class MainProgram:
         wakeup_time = time.time()
         wake_reason = machine.wake_reason()
         print("Wake reason:", wake_reason, "at time:", wakeup_time)
-        allow_captive_portal = (wake_reason != machine.DEEPSLEEP_RESET)
+        allow_captive_portal = (wake_reason != machine.DEEPSLEEP_WAKEUP_EXT0)
         wlan = self.connect_wifi(enter_captive_portal_if_needed=allow_captive_portal)
         
         if wlan is None:
@@ -97,6 +97,12 @@ class MainProgram:
         except Exception as e:
             print("Firmware update check failed:", e)
 
-        esp32.wake_on_ext0(pin = self.pir, level = esp32.WAKEUP_ANY_HIGH)
+        esp32.wake_on_ext0(pin = self.pir, level = machine.Pin.WAKE_LOW)
+        self.client.create_device_status({
+            "last_wakeup_time": wakeup_time,
+            "last_wakeup_reason": str(wake_reason),
+            "status": "sleeping",
+            "version": self.client.get_firmware_version()
+        })
         print("MainProgram completed. deep sleep")
         machine.deepsleep()
