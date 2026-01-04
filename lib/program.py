@@ -19,6 +19,18 @@ class MainProgram:
         self.wifi_manager = WifiManager()
         print("MainProgram initialized with device ID:", self.device_id)
 
+    def get_wakeup_time(self):
+        # Return milliseconds until the next midday (12:00:00).
+        seconds_since_midnight = time.time() % 86400
+        midday_seconds = 12 * 60 * 60
+
+        if seconds_since_midnight < midday_seconds:
+            seconds_until_midday = midday_seconds - seconds_since_midnight
+        else:
+            seconds_until_midday = (86400 - seconds_since_midnight) + midday_seconds
+
+        return int(seconds_until_midday * 1000)
+
     def connect_wifi(self, enter_captive_portal_if_needed):
         print("Connecting to WiFi...")
         wlan = self.wifi_manager.get_connection(enter_captive_portal_if_needed=enter_captive_portal_if_needed)
@@ -36,7 +48,17 @@ class MainProgram:
         
         return wlan
         
-
+    def connect_to_iot_manager(self):
+        wlan = self.connect_wifi(enter_captive_portal_if_needed=True)
+        
+        if wlan is None:
+            print("Failed to connect to WiFi.")
+            raise Exception("WiFi connection failed")
+        
+        print("Connected to wifi. the time is now:", time.time())
+        self.client.authenticate(self.device_id, self.device_password)
+        self.client.discover()
+        print("Connected to IoT Manager at:", self.iot_manager_base_url)
 
     def take_photo(self):
         try:
@@ -49,7 +71,7 @@ class MainProgram:
             print("Photo taken, size:", len(frame))
             return frame
         except Exception as e:
-            print("create_content failed:", e)
+            print("take_photo failed:", e)
 
     def upload_photo(self, frame, test_post=False):
         try:
@@ -73,35 +95,35 @@ class MainProgram:
 
     def main(self):
         print("Starting MainProgram")
-        photo = self.take_photo()
         wakeup_time = time.time()
         wake_reason = machine.wake_reason()
         print("Wake reason:", wake_reason, "at time:", wakeup_time)
-        wlan = self.connect_wifi(enter_captive_portal_if_needed=True)
-        
-        if wlan is None:
-            print("Failed to connect to WiFi.")
-            raise Exception("WiFi connection failed")
-        
-        print("Connected to wifi. the time is now:", time.time())
-        self.client.authenticate(self.device_id, self.device_password)
-        self.client.discover()
-        print("Connected to IoT Manager at:", self.iot_manager_base_url)
+        if wake_reason == 2:
+            # wake up due to PIR trigger
+            photo = self.take_photo()
+            self.connect_to_iot_manager()
+            if photo:
+                self.upload_photo(photo)
+        else:
+            # wake up triggered by schedule. Perform status checkin
+            # and check for firmware updates
+            self.connect_to_iot_manager()
+            self.client.create_device_status({
+                "last_wakeup_time": wakeup_time,
+                "last_wakeup_reason": str(wake_reason),
+                "version": self.client.get_firmware_version()
+            })
+            try:
+                print("Checking for firmware updates...")
+                self.client.check_and_update_firmware()
+            except Exception as e:
+                print("Firmware update check failed:", e)
 
-        self.upload_photo(photo)
-
-        # try:
-        #     print("Checking for firmware updates...")
-        #     self.client.check_and_update_firmware()
-        # except Exception as e:
-        #     print("Firmware update check failed:", e)
-
+        # set up PIR wakeup
         esp32.wake_on_ext0(pin = self.pir_pin, level = esp32.WAKEUP_ANY_HIGH)
-        self.client.create_device_status({
-            "last_wakeup_time": wakeup_time,
-            "last_wakeup_reason": str(wake_reason),
-            "status": "sleeping",
-            "version": self.client.get_firmware_version()
-        })
+        
         print("MainProgram completed. deep sleep")
-        machine.deepsleep()
+        # We will sleep until either the PIR sensor is trigger
+        # (in which case we'll take a picture and upload it)
+        # or until midday (in which case we'll do a status checkin)
+        machine.deepsleep(self.get_wakeup_time())
