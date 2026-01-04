@@ -61,18 +61,14 @@ class MainProgram:
         print("Connected to IoT Manager at:", self.iot_manager_base_url)
 
     def take_photo(self):
-        try:
-            print("Taking photo...")
-            camera.init(0, format=camera.JPEG, fb_location=camera.PSRAM)
-            camera.framesize(camera.FRAME_SXGA)
-            camera.whitebalance(camera.WB_SUNNY)
-            frame = camera.capture()
-            camera.deinit()
-            print("Photo taken, size:", len(frame))
-            return frame
-        except Exception as e:
-            print("take_photo failed:", e)
-
+        print("Taking photo...")
+        camera.init(0, format=camera.JPEG, fb_location=camera.PSRAM)
+        camera.framesize(camera.FRAME_SXGA)
+        camera.whitebalance(camera.WB_SUNNY)
+        frame = camera.capture()
+        camera.deinit()
+        return frame
+        
     def upload_photo(self, frame, test_post=False):
         try:
             response = self.client.upload_image(
@@ -101,9 +97,17 @@ class MainProgram:
         if wake_reason == 2:
             # wake up due to PIR trigger
             photo = self.take_photo()
+            
             self.connect_to_iot_manager()
             if photo:
                 self.upload_photo(photo)
+            else:
+                self.client.create_device_status({
+                    "last_wakeup_time": wakeup_time,
+                    "last_wakeup_reason": str(wake_reason),
+                    "message": "Failed to capture photo after PIR trigger.",
+                    "version": self.client.get_firmware_version()
+                })
         else:
             # wake up triggered by schedule. Perform status checkin
             # and check for firmware updates
